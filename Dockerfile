@@ -1,3 +1,6 @@
+# -------------------------
+# Base image
+# -------------------------
 FROM python:3.10-slim
 
 # -------------------------
@@ -5,44 +8,52 @@ FROM python:3.10-slim
 # -------------------------
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
-    libgl1 \
     poppler-utils \
+    libgl1 \
+    libglib2.0-0 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------
-# Set workdir
+# Working directory
 # -------------------------
 WORKDIR /api
 
 # -------------------------
-# Python deps
+# Python dependencies
 # -------------------------
 COPY requirements.txt .
 
-# IMPORTANT: numpy<2 for torch compatibility
+# IMPORTANT:
+# torch + ultralytics require numpy < 2
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir "numpy<2.0" && \
     pip install --no-cache-dir -r requirements.txt
 
 # -------------------------
-# Copy application
+# Copy application code
 # -------------------------
 COPY app app
-COPY yolo11s.pt yolo11s.pt
+COPY scripts scripts
+COPY samples samples
+
+# Copy YOLO model (when available)
+# If not present, this line is harmless
+COPY *.pt . || true
 
 # -------------------------
 # Environment
 # -------------------------
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/api
 
 # -------------------------
-# Expose port
+# Expose API port
 # -------------------------
 EXPOSE 5005
 
 # -------------------------
-# Run API
+# Start FastAPI
 # -------------------------
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5005"]
