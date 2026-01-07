@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, asdict
 import json
 import pytesseract
-from utils import *
+from app.core.utils import *
 from typing import Any
 
 @dataclass

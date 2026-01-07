@@ -1,0 +1,17 @@
+brew install python@3.10
+python3.10 --version
+deactivate
+rm -rf venv
+python3.10 -m venv venv
+source venv/bin/activate
+python --version
+pip install --upgrade pip
+pip install fastapi uvicorn python-multipart
+pip install -r requirements.txt
+brew install poppler
+pip install pdf2image
+pip uninstall -y numpy
+pip install "numpy<2.0"
+python -c "import numpy; print(numpy.__version__)"
+python -c "import fastapi; print(fastapi.__version__)"
+python -m uvicorn app.main:app --port 5005
