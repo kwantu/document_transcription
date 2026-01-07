@@ -19,7 +19,7 @@ def parse_json(value):
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON parameter")
 
-@router.post("/ocr/image")
+@router.post("/documents/extract")
 async def ocr_image(
     file: UploadFile = File(...),
     geometry: str | None = Form(None),
