@@ -130,9 +130,9 @@ def reorient_img(
             plt.show()
 
         if return_fig:
-            return img, delta, fig
+            return img, (delta, rotation), fig
 
-    return img, delta, None
+    return img, (delta, rotation), None
 
 
 # --- SMALL ANGLE ROTATION --- using contours

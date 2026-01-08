@@ -77,6 +77,14 @@ def img_2_json(
     r = yolo_model(img_path)[0]
     img = r.orig_img
 
+    # 2. Reorient + rescale
+    reoriented_img, angles, fig_reoriented = reorient_img(
+        result=r,
+        correction_angle=geom_params.correction_angle,
+        return_fig=save_process,
+        show=False
+    )
+    
     metadata, photo = None, None
     for box in r.boxes:
         cls = int(box.cls[0])
@@ -89,15 +97,13 @@ def img_2_json(
     if metadata is None:
         raise RuntimeError("Metadata not detected")
 
-    # 2. Reorient + rescale
-    reoriented, _, fig_reoriented = reorient_img(
-        result=r,
-        correction_angle=geom_params.correction_angle,
-        return_fig=save_process,
-        show=False
-    )
+    # Also need to REORIENT METADATA + PHOTO
+    cv2_rotation_ang = angles[1]
+    metadata = cv2.rotate(metadata, cv2_rotation_ang)
+    photo = cv2.rotate(photo, cv2_rotation_ang)
+    
 
-    scaled, sf = rescale(reoriented, target_height=geom_params.metadata_target_height)
+    scaled, sf = rescale(metadata, target_height=geom_params.metadata_target_height)
     h, w = scaled.shape[:2]  # for param saving
 
     # 3. Deskew
