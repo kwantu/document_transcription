@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Header
 import shutil
 import uuid
 import os
@@ -13,11 +13,20 @@ from app.core.pipeline import (
 
 router = APIRouter()
 
-
 @router.post("/documents/extract")
 async def ocr_image(
     file: UploadFile = File(...),
+    x_api_key: str | None = Header(
+        default=None,
+        alias="X-API-Key",
+        description="API key for authentication"
+    ),
 ):
+    """
+    Extract document data using OCR.
+    X-API-Key must be provided in headers.
+    """
+
     tmp_dir = f"/tmp/{uuid.uuid4()}"
     os.makedirs(tmp_dir, exist_ok=True)
 
@@ -26,18 +35,17 @@ async def ocr_image(
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # ✅ PDF → IMAGE
+    # PDF → IMAGE
     if file.content_type == "application/pdf":
         images = convert_from_path(file_path, dpi=300)
         if not images:
-            raise HTTPException(status_code=400, detail="PDF has no pages")
+            return {"detail": "PDF has no pages"}
 
         image_path = os.path.join(tmp_dir, "page_1.jpg")
         images[0].save(image_path, "JPEG")
     else:
         image_path = file_path
 
-    # ✅ HARD-CODED INTERNAL CONFIGS
     geom_cfg = GeometryConfig(
         id_class=0,
         metadata_target_height=420,
@@ -54,7 +62,6 @@ async def ocr_image(
         confidence=0.5,
     )
 
-    # ✅ CONVERT TO DICTS (what ocr_service expects)
     result = process_image(
         image_path=image_path,
         geom=geom_cfg.__dict__,
