@@ -57,7 +57,7 @@ def reorient_img(
         correction_angle: float = 0.0,
         show: bool = False,
         return_fig: bool = False
-) -> tuple[np.ndarray, float, Optional[Figure]]:
+) -> tuple[np.ndarray, tuple[float, Optional[int]], Optional[Figure]]:
     """
     Algorithm that reorients an image by any angle in {90, 180, 270} using the position of metadata/photo, coupled
     with what we are calling the 'correction angle'. This correction angle is the angle with +x that a perfectly
@@ -89,7 +89,7 @@ def reorient_img(
     delta = (theta - correction_angle + 360) % 360  # wrap to [0, 360) also
 
     # logical reorientation
-    rotation = None
+    rotation: Optional[int] = None
     if 45 <= delta < 135:       # indicator points DOWN
         rotation = cv2.ROTATE_90_CLOCKWISE
     elif 135 <= delta < 225:    # indicator points left (uncommon)
@@ -176,7 +176,7 @@ def deskew_img(
         dilated,
         pad, pad, pad, pad,
         borderType=cv2.BORDER_CONSTANT,
-        value=0 # black pixels
+        value=(0, 0, 0) # black pixels
     )
 
     # --- find contours + compute angle ---
