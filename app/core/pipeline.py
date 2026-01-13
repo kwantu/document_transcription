@@ -1,14 +1,15 @@
 from dataclasses import dataclass, field, asdict
 import json
 import pytesseract
-from app.core.utils import *
+from app.core.utils import * # imports key packages, too (cv2, YOLO, ...)
 from typing import Any
 
 @dataclass
 class GeometryConfig:
-    id_class: int = 0                   # smartid
-    metadata_target_height: int = 400   # ~420 for smartid, ??? for idbook
-    correction_angle: float = 0.0       # 10 for smartid, ?? for idbook
+    id_class: int = 0  # smartid
+    metadata_target_height: int = 400  # ~420 for smartid, ??? for idbook
+    correction_angle: float = 0.0  # 10 for smartid, ?? for idbook
+
 
 @dataclass
 class PreprocessConfig:
@@ -17,6 +18,7 @@ class PreprocessConfig:
     thresh_c: int = 3
     morph_kernel: tuple[int, int] = (2, 1)
     ocr_psm: int = 6
+
 
 @dataclass
 class PostprocessConfig:
@@ -29,6 +31,7 @@ class PostprocessConfig:
     )
     confidence: float = 0.4
 
+
 ID_HANDLERS = {
     0: ocr_to_dict_smartid,
     # 1: ocr_to_dict_idbook
@@ -38,8 +41,8 @@ ID_HANDLERS = {
 # --- Raw image -> JSON ---
 def img_2_json(
         yolo_model: YOLO,
-        img_path: str,
-        dest_path: str | None = None,  # one folder for results to go in
+        img_path: str | Path,
+        dest_path: str | Path | None = None,  # one folder for results to go in
         geom_params: GeometryConfig | None = None,
         prep_params: PreprocessConfig | None = None,
         post_params: PostprocessConfig | None = None,
@@ -75,16 +78,17 @@ def img_2_json(
 
     # 1. YOLO
     r = yolo_model(img_path)[0]
-    img = r.orig_img
+    img = r.orig_img.copy()
+    fig_original = display(img, show=False)
 
     # 2. Reorient + rescale
-    reoriented_img, angles, fig_reoriented = reorient_img(
+    reoriented_img, (delta, cv2_rotation_ang), fig_reoriented = reorient_img(
         result=r,
         correction_angle=geom_params.correction_angle,
         return_fig=save_process,
         show=False
     )
-    
+
     metadata, photo = None, None
     for box in r.boxes:
         cls = int(box.cls[0])
@@ -98,10 +102,9 @@ def img_2_json(
         raise RuntimeError("Metadata not detected")
 
     # Also need to REORIENT METADATA + PHOTO
-    cv2_rotation_ang = angles[1]
-    metadata = cv2.rotate(metadata, cv2_rotation_ang)
-    photo = cv2.rotate(photo, cv2_rotation_ang)
-    
+    if cv2_rotation_ang is not None:
+        metadata = cv2.rotate(metadata, cv2_rotation_ang)
+        photo = cv2.rotate(photo, cv2_rotation_ang)
 
     scaled, sf = rescale(metadata, target_height=geom_params.metadata_target_height)
     h, w = scaled.shape[:2]  # for param saving
@@ -176,6 +179,7 @@ def img_2_json(
 
         fig_ex.tight_layout()
 
+        fig_original.savefig(out_dir / "input.png")     # save input img
         fig_reoriented.savefig(out_dir / "reoriented.png")
         fig_rotated.savefig(out_dir / "rotated.png")
         fig_ex.savefig(out_dir / "preprocessing.png")
@@ -199,6 +203,8 @@ def img_2_json(
         "img_path": str(img_path),
         "classes": r.names,
         "scale_factor": sf,
+        "reorientation_delta": delta,
+        "reorientation_cv2": cv2_rotation_ang,
         "rescaled_shape": {"w": int(w), "h": int(h)},
         "id_no_extraction_method": extr_method,
         "found_photo": photo is not None
