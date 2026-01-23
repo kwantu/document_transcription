@@ -135,7 +135,7 @@ def reorient_img(
     return img, (delta, rotation), None
 
 
-# --- SMALL ANGLE ROTATION --- using contours
+# --- SMALL ANGLE ROTATION --- (using contours)
 def deskew_img(
         img: np.ndarray,
         show: bool = False,
@@ -363,7 +363,7 @@ def search_for_line(
     return best_idx, best_score
 
 
-# Helper for field formatting
+# Helpers for field formatting
 def extract_int_from_string(s: str) -> str | None:
     """
     Return all digit characters in 's', preserving order.
@@ -373,6 +373,28 @@ def extract_int_from_string(s: str) -> str | None:
     """
     digits = [c for c in s if c.isdigit()]
     return "".join(digits) if digits else None
+
+def numeric_line(lines: list[str]) -> tuple[int, str]:
+    """
+    Finding the index and line of the most numeric line given a list[str] of lines.
+    :param lines: List of string type objects (contextually, our OCR text.splitlines())
+    :return: index and most numeric line
+    """
+    scores = []
+
+    for line in lines:
+        chars = [c for c in line if not c.isspace()]
+        if not chars:
+            scores.append(0.0)
+            continue
+
+        numeric = sum(c.isdigit() for c in chars)
+        scores.append(numeric / len(chars))
+
+    idx = max(range(len(scores)), key=scores.__getitem__)
+    nums = extract_int_from_string(lines[idx])
+
+    return idx, nums
 
 # --- BESPOKE FIELD FORMATTING FUNCTION ---
 def format_fields_smartid(
@@ -389,7 +411,7 @@ def format_fields_smartid(
         1. We are being strict on the ID number containing 13 digits.
         2. Current stage of the pipeline is not cross-referencing ID number with other values like DoB, so we only
             look for the three above fields at the moment. However, there is room for easy scalability.
-    :param text: Cleaned, formatted OCR text
+    :param text: Clean OCR text
     :param confidence: Score based rejection of the best idx to go into the line-search
     :return: Dictionary of best fields
     """
@@ -432,12 +454,91 @@ def format_fields_smartid(
     most_numeric_idx = max(range(len(scores)), key=scores.__getitem__)
     id_num = extract_int_from_string(lines[most_numeric_idx])
 
+    if id_num is None:
+        return fields, "unsuccessful"
+
     if len(id_num) == 13:
         fields["Identity Number"] = id_num
-        return fields, "numeric"
+        return fields, "numeric:absolute"
+
+    if len(id_num) > 13:
+        fields["Identity Number"] = id_num[:13] # get first 13 nums.
+        return fields, "numeric:truncation"
 
     # Failure in both methods
     return fields, "unsuccessful"
+
+
+def format_fields_idbook(
+        text: str,
+        confidence: float = 0.4
+) -> tuple[dict[str, str], str]:
+    """
+    We aim to build a function that targets key fields for the idbook, using these key steps.
+        1. Search for the barcode, and aim to read (not yet developed), this will give us ALL key information.
+        2. Target the first line of the OCR, with these key ideas in mind:
+            a) Tesseract *commonly* mistakes 1 <-> I in the first part of the string. This can lead to
+                'I.D. No.' as '1.D. No' for example.
+            b) ID books have id numbers with whitespace.
+        3. Try this for now.
+    :param text: Clean OCR text
+    :param confidence: Score based rejection of the best idx to go into the line-search
+    :return: Dictionary of best fields
+    """
+    # Assume we are working with clean text, please refer to clean_raw_ocr_output()
+    lines = text.splitlines()
+    field_list: list[str] = ["VAN/SURNAME", "VOORNAME/FORENAMES"]
+    fields: dict[str, str | None] = {k: None for k in field_list + ["Identity Number"]}
+    method: str = "error:no_method_given"
+
+    # Step 1: Barcode
+    # INSERT CODE
+
+    # Step 2: Search explicitly for the letters 'IDNo' in a line?
+    # Think later if step 3 is unreliable...
+
+    # Step 3: First Line
+    id_num = extract_int_from_string(lines[0])
+
+    if len(id_num) == 13: # Assume we have a correct ID num
+        fields["Identity Number"] = id_num
+        method = "first_row:len=13"
+    elif len(id_num) == 14: # Assume I -> 1
+        fields["Identity Number"] = id_num[1:]
+        method = "first_row:len=14"
+    elif len(id_num) > 14: # Assume I -> 1 AND noise
+        fields["Identity Number"] = id_num[1:14]
+        method = "first_row:len>14"
+    else:
+        fields["Identity Number"] = None
+        method = "unsuccessful:first_row" # 'first row' approach failed.
+
+    # Step 3: Search for the most numeric line, if we were unsuccessful
+    if method == "unsuccessful:first_row":
+        id_num = numeric_line(lines)[1]
+
+        if len(id_num) >= 13:
+            fields["Identity Number"] = id_num[:13]
+            method = "numeric_scoring"
+        else:
+            fields["Identity Number"] = None
+            method = "unsuccessful:numeric_scoring"
+
+    # Field Search for other fields --- less essential for now.
+    for f in field_list:
+        idx, score = search_for_line(text, f"{f}:", confidence=confidence)
+
+        if idx is None or idx + 1 >= len(lines):
+            continue
+
+        raw = lines[idx + 1]
+        fields[f] = raw
+
+    # Standardise field names
+    rename = {"VAN/SURNAME": "Surname", "VOORNAME/FORENAMES": "Names"}
+    fields = {rename.get(k, k): v for k, v in fields.items()}
+
+    return fields, method
 
 
 # --- RAW OCR -> DICT ---
@@ -460,3 +561,24 @@ def ocr_to_dict_smartid(
     """
     clean = clean_raw_ocr_output(text, allowed_chars, filler_char)
     return format_fields_smartid(clean, confidence) # fields(dict), method(str)
+
+
+def ocr_to_dict_idbook(
+        text: str,
+        allowed_chars: set | None = None,
+        filler_char: str = "",
+        confidence: float = 0.5
+) -> tuple[dict[str, str], str]:
+    """
+    Wrapping cleaning & formatting functions into one. Only need one line, and one set of arguments to:
+        1. Clean raw ocr text
+        2. Format ocr text into a dictionary
+    :param text: Raw OCR text
+    :param allowed_chars: Set of valid characters we want to search for. Typically upper/lower ASCII, numbers,
+    space, hyphon, colon.
+    :param filler_char: What we replace noisy characters with
+    :param confidence: Score based rejection of the best idx.
+    :return: Fields dictionary and the ID extraction method relied upon.
+    """
+    clean = clean_raw_ocr_output(text, allowed_chars, filler_char)
+    return format_fields_idbook(clean, confidence) # fields(dict), method(str)

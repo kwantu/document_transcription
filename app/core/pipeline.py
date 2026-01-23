@@ -5,17 +5,21 @@ from app.core.utils import * # imports key packages, too (cv2, YOLO, ...)
 from typing import Any
 
 @dataclass
-class GeometryConfig:
-    id_class: int = 0  # smartid
-    metadata_target_height: int = 400  # ~420 for smartid, ??? for idbook
-    correction_angle: float = 0.0  # 10 for smartid, ?? for idbook
+class GeometryConfig: # will require this down the line for each ID type.
+    id_class: int                       # smartid = 0, idbook = 1
+    metadata_target_height: int = 400   # ~440 for smartid, 350 for idbook
+    correction_angle: float = 0.0       # 10 for smartid, -100 for idbook
 
 
 @dataclass
 class PreprocessConfig:
-    k_denoise: int = 3
+    denoise_type: str = "bilateral"     # "bilateral" or "gaussian"
+    k_denoise: int = 3                  # if gaussian
+    bilateral_d: int = 5                # if bilateral
+    bilateral_sigma_color: int = 20     # ^
+    bilateral_sigma_space: int = 20     # ^^
     thresh_block: int = 13
-    thresh_c: int = 3
+    thresh_c: int = 15                  # threshold bias. higher => darker result
     morph_kernel: tuple[int, int] = (2, 1)
     ocr_psm: int = 6
 
@@ -32,9 +36,10 @@ class PostprocessConfig:
     confidence: float = 0.4
 
 
+# ID post-processing functions from utils.py
 ID_HANDLERS = {
     0: ocr_to_dict_smartid,
-    # 1: ocr_to_dict_idbook
+    1: ocr_to_dict_idbook
 }
 
 
@@ -42,11 +47,11 @@ ID_HANDLERS = {
 def img_2_json(
         yolo_model: YOLO,
         img_path: str | Path,
-        dest_path: str | Path | None = None,  # one folder for results to go in
+        dest_path: str | Path | None = None,  # one folder for results
         geom_params: GeometryConfig | None = None,
         prep_params: PreprocessConfig | None = None,
         post_params: PostprocessConfig | None = None,
-        save_process: bool = True  # almost never want to turn this off, only gives formatted output
+        save_process: bool = True  # want False if we just want formatted output
 ) -> dict[str, Any]:
     """
     The end-to-end pipeline that takes the YOLO model associated with geom_params.id_class, and an image path, to:
@@ -55,12 +60,12 @@ def img_2_json(
         3. Grayscale, denoise, binarise & thicken text.
         4. Extract OCR from Tesseract.
         5. Clean & format raw OCR string.
-        6. Store process images, params, and outputs in dest_path.
+        6. Store process images, params, and outputs in DEST_PATH.
     :param yolo_model: YOLO objet recognition model that extracts metadata & photo.
     :param img_path: str | Path object to the sample.
     :param dest_path: Directory of output folder, named after the image. If the image at 'img_path' is called
-        'image001.jpeg' for example, the output will be stored in dest_path/img001/.
-        If no dest_path specified, output is placed next to the raw image.
+        'image001.jpeg' for example, the output will be stored in DEST_PATH/img001/.
+        If no DEST_PATH specified, output is placed next to the raw image.
     :param geom_params: GeometryConfig dataclass.
     :param prep_params: PreprocessConfig dataclass.
     :param post_params: PreprocessConfig dataclass.
@@ -72,7 +77,8 @@ def img_2_json(
     dest_root = Path(dest_path) if dest_path else img_path.parent
     dest_root.mkdir(parents=True, exist_ok=True)
 
-    geom_params = geom_params or GeometryConfig()
+    # require geom_params since we are working with multiple ID types.
+    # otherwise, continue with basic preprocess params.
     prep_params = prep_params or PreprocessConfig()
     post_params = post_params or PostprocessConfig()
 
@@ -122,9 +128,22 @@ def img_2_json(
     # -- adaptive threshold
     # -- thicken
     gray = cv2.cvtColor(rotated, cv2.COLOR_BGR2GRAY)
-    denoised = cv2.GaussianBlur(
-        gray, (prep_params.k_denoise, prep_params.k_denoise), 0
-    )
+    denoised = gray
+
+    if prep_params.denoise_type == "gaussian":
+        denoised = cv2.GaussianBlur(
+            gray,
+            (prep_params.k_denoise, prep_params.k_denoise),
+            0
+        )
+
+    elif prep_params.denoise_type == "bilateral":
+        denoised = cv2.bilateralFilter(
+            gray,
+            d=prep_params.bilateral_d,
+            sigmaColor=prep_params.bilateral_sigma_color,
+            sigmaSpace=prep_params.bilateral_sigma_space,
+        )
 
     thresh = cv2.adaptiveThreshold(
         denoised, 255,
@@ -179,7 +198,7 @@ def img_2_json(
 
         fig_ex.tight_layout()
 
-        fig_original.savefig(out_dir / "input.png")     # save input img
+        fig_original.savefig(out_dir / "input.png")
         fig_reoriented.savefig(out_dir / "reoriented.png")
         fig_rotated.savefig(out_dir / "rotated.png")
         fig_ex.savefig(out_dir / "preprocessing.png")
@@ -205,7 +224,7 @@ def img_2_json(
         "scale_factor": sf,
         "reorientation_delta": delta,
         "reorientation_cv2": cv2_rotation_ang,
-        "rescaled_shape": {"w": int(w), "h": int(h)},
+        "rescaled_metadata_shape": {"w": int(w), "h": int(h)},
         "id_no_extraction_method": extr_method,
         "found_photo": photo is not None
     }
