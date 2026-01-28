@@ -1,8 +1,3 @@
-"""
-This is where our useful image processing utilities are, not including data handling functionalities that were
-used to work around dataset creation, label review/validation steps.
-"""
-
 from difflib import SequenceMatcher
 import string
 from typing import Optional
@@ -13,6 +8,8 @@ from pathlib import Path
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+from pyzbar.pyzbar import decode
+from datetime import datetime
 
 
 # --- IMAGE VIEW FUNCTION ---
@@ -362,6 +359,28 @@ def search_for_line(
 
     return best_idx, best_score
 
+# --- BARCODE DETECTION ---
+def barcode_id_num(img: np.ndarray | str | Path) -> str | None:
+    """
+    Use pyzbar to detect and decode barcode, extracting ID number.
+    :param img: Image containing barcode.
+    :return: ID number if decoded, None otherwise.
+    """
+    if isinstance(img, str) or isinstance(img, Path):
+        img = cv2.imread(str(img))
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    barcodes = decode(gray)
+    id_num = None
+
+    if barcodes is not None:
+        for barcode in barcodes:
+            id_num = barcode.data.decode("utf-8")
+            if id_num:
+                break
+
+    return id_num
+
 
 # Helpers for field formatting
 def extract_int_from_string(s: str) -> str | None:
@@ -485,6 +504,10 @@ def format_fields_idbook(
     :param confidence: Score based rejection of the best idx to go into the line-search
     :return: Dictionary of best fields
     """
+    # Step 0: Check for empty OCR output
+    if text is None:
+        return {}, "unsuccessful:null_ocr"
+
     # Assume we are working with clean text, please refer to clean_raw_ocr_output()
     lines = text.splitlines()
     field_list: list[str] = ["VAN/SURNAME", "VOORNAME/FORENAMES"]
@@ -500,7 +523,10 @@ def format_fields_idbook(
     # Step 3: First Line
     id_num = extract_int_from_string(lines[0])
 
-    if len(id_num) == 13: # Assume we have a correct ID num
+    if id_num is None:
+        fields["Identity Number"] = None
+        method = "first_row:null"
+    elif len(id_num) == 13: # Assume we have a correct ID num
         fields["Identity Number"] = id_num
         method = "first_row:len=13"
     elif len(id_num) == 14: # Assume I -> 1
@@ -513,7 +539,7 @@ def format_fields_idbook(
         fields["Identity Number"] = None
         method = "unsuccessful:first_row" # 'first row' approach failed.
 
-    # Step 3: Search for the most numeric line, if we were unsuccessful
+    # Step 4: Search for the most numeric line, if we were unsuccessful
     if method == "unsuccessful:first_row":
         id_num = numeric_line(lines)[1]
 
@@ -582,3 +608,38 @@ def ocr_to_dict_idbook(
     """
     clean = clean_raw_ocr_output(text, allowed_chars, filler_char)
     return format_fields_idbook(clean, confidence) # fields(dict), method(str)
+
+
+# --- VALIDATE ID NUMBER ---
+def validate_id(id_number: str) -> bool:
+    """
+    Validate SA ID using date and Luhn check.
+    :param id_number: SA ID number (string)
+    :return: Boolean indicator of a valid ID
+    """
+
+    if not isinstance(id_number, str):
+        raise TypeError(f"ID number must be of type str, not {type(id_number)}")
+
+    # Digit + Length check
+    if not id_number.isdigit() or len(id_number) != 13:
+        return False
+
+    # Date Check
+    try:
+        year = int(id_number[0:2])
+        month = int(id_number[2:4])
+        day = int(id_number[4:6])
+        current_year = datetime.now().year % 100
+        century = 1900 if year > current_year else 2000
+        datetime(century + year, month, day)
+    except ValueError:
+        return False
+
+    # Luhn check
+    digits = [int(d) for d in id_number]
+    odd_sum = sum(digits[::2])
+    even_digits = digits[1::2]
+    even_concat = ''.join(str(d * 2) for d in even_digits)
+    even_sum = sum(int(d) for d in even_concat)
+    return (odd_sum + even_sum) % 10 == 0

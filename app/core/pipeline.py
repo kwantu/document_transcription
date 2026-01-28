@@ -43,6 +43,40 @@ ID_HANDLERS = {
 }
 
 
+# --- ID Type Recognition & Param Loader ---
+def load_params(img_path: Path | str) -> tuple[GeometryConfig, PreprocessConfig, PostprocessConfig]:
+    """
+    Pass the image through the first stage of the process, allowing us to parametrise the subsequent
+    'img_2_json' function.
+    :param img_path: str | Path object to the sample.
+    :return: Pipeline parameters (geom_params, prep_params, post_params)
+    """
+    img = cv2.imread(str(img_path)) # load image
+
+    # send through doc recognition stage (not yet made)
+    doc_class = 0
+
+    # structure params
+    if doc_class == 0: # SMARTID
+        return GeometryConfig(
+            id_class=doc_class,
+            metadata_target_height=440,
+            correction_angle=10
+        ), PreprocessConfig(
+            thresh_c=4
+        ), PostprocessConfig() # defaults, for now on postprocessing
+    elif doc_class == 1: # IDBOOK
+        return GeometryConfig(
+            id_class=doc_class,
+            metadata_target_height=380,
+            correction_angle=-100
+        ), PreprocessConfig(
+            thresh_c=20
+        ), PostprocessConfig()
+    else:
+        raise ValueError(f"Invalid document class found, class={doc_class}")
+
+
 # --- Raw image -> JSON ---
 def img_2_json(
         yolo_model: YOLO,
@@ -94,6 +128,11 @@ def img_2_json(
         return_fig=save_process,
         show=False
     )
+
+    # BEFORE ANYTHING, try to read barcode from reoriented image
+    barcode_num = None
+    if geom_params.id_class == 1: # IDBOOK
+        barcode_num = barcode_id_num(reoriented_img)
 
     metadata, photo = None, None
     for box in r.boxes:
@@ -214,6 +253,11 @@ def img_2_json(
         post_params.confidence
     )
 
+    # barcode_num handling
+    if barcode_num:
+        output_dict["Identity Number"] = barcode_num
+        extr_method = "barcode_decoding"
+
     # 9. Save params
     params: dict[str, Any] = {
         "geometry": asdict(geom_params),
@@ -240,3 +284,43 @@ def img_2_json(
         json.dump(output_dict, f, indent=2)
 
     return output_dict
+
+
+# --- Full Pipeline Function ---
+def full_pipeline(
+        img_path: str,
+        dest_path: str | Path | None = None,
+        save_process: bool = False,
+) -> dict[str, Any]:
+    """
+    The full end-to-end pipeline, including doc recognition (that we have not yet made)
+    :param img_path: Path to the image
+    :param dest_path: Path to the output directory
+    :param save_process: bool, optional: saves verbose preprocessing images w/ ocr results
+    :return: dict[str, Any] Formatted fields dictionary
+    """
+
+    # Stage 1: Detect doc class & load params
+    geom_params, prep_params, post_params = load_params(img_path)
+
+    # Stage 2: Select YOLO model based on doc class
+    doc_class: int = geom_params.id_class
+    yolo_model = None
+
+    if doc_class == 0: # SMARTID
+        yolo_model = YOLO("path/to/smartid_weights.pt")
+    elif doc_class == 1: # IDBOOK
+        yolo_model = YOLO("path/to/idbook_weights.pt")
+
+    # Stage 3: Send the image through the pipeline
+    output = img_2_json(
+        img_path=img_path,
+        dest_path=dest_path,
+        save_process=save_process,
+        yolo_model=yolo_model,
+        geom_params=geom_params,
+        prep_params=prep_params,
+        post_params=post_params,
+    )
+
+    return output
