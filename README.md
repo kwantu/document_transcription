@@ -3,7 +3,7 @@
 > An open-source pipeline for extracting structured identity information from South African Smart ID cards and ID Books using computer vision and OCR.
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![Tesseract v5](https://img.shields.io/badge/Tesseract-v5-green.svg)](https://github.com/tesseract-ocr/tesseract)
 [![Model: EfficientNetB0](https://img.shields.io/badge/Classifier-EfficientNetB0-orange.svg)](https://arxiv.org/abs/1905.11946)
 [![Model: YOLO11s](https://img.shields.io/badge/Segmentation-YOLO11s-purple.svg)](https://github.com/ultralytics/ultralytics)
@@ -13,7 +13,7 @@
 ## Overview
 
 This pipeline accepts a South African identity document image (or PDF) via an API and returns a structured JSON 
-object containing key identity fields &mdassh; including surname, forenames, and identity number. It supports 
+object containing key identity fields &mdash; including surname, forenames, and identity number. It supports 
 two document classes:
 
 - **Smart ID Card** (class `0`)
@@ -281,3 +281,4 @@ and distribute any derivative works under the same licence.
 
 For full function-level reference — including all configurable parameters, algorithm descriptions, and 
 tuning guidance — see [`technical_docs.md`](./DOCUMENTATION.md).
+
