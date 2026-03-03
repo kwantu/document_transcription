@@ -11,6 +11,7 @@ pdf2image
 python-dotenv
 mysql-connector-python
 pyzbar
+pymupdf
 
 torch==2.2.2+cpu
 torchvision==0.17.2+cpu
