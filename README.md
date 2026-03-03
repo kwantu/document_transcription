@@ -29,18 +29,22 @@ a [Digital Public Good (DPG)](https://digitalpublicgoods.net/). All model weight
 ```python
 from app.core.pipeline import full_pipeline
 
-result = full_pipeline(
+result, is_valid = full_pipeline(
     input_path="path/to/document.jpg",
     dest_path="path/to/output/",
     save_process=False
 )
 
 print(result)
-# {
-#   "Surname": "SMITH",
-#   "Names": "JOHN JAMES",
-#   "Identity Number": "8001015009087"
-# }
+print(is_valid)
+```
+```terminaloutput
+{
+  "Surname": "SMITH",
+  "Names": "JOHN JAMES",
+  "Identity Number": "8001015009087"
+}
+True
 ```
 
 Accepted input formats: `.jpg`, `.jpeg`, `.png`, `.pdf` (first page only).
@@ -62,13 +66,13 @@ The pipeline processes each document through six sequential stages:
 
 ## Models
 
-All model weights are included in the `models/` directory of this repository.
+All model weights are included in the `model_weights/` directory of this repository.
 
-| File | Architecture | Purpose | Training data                |
-|---|---|---|------------------------------|
-| `efficientnet_b0_doc_classifier.pt` | EfficientNetB0 | Classifies document as Smart ID or ID Book | ~1,000 images, 2 classes     |
-| `smartid_yolo.pt` | YOLO11s | Segments metadata and photo regions on Smart ID cards | ~1,000 images, 3 box classes |
-| `idbook_yolo.pt` | YOLO11s | Segments metadata and photo regions on ID Books | ~1,000 images, 3 box classes |
+| File                   | Architecture   | Purpose                                               | Training data                |
+|------------------------|----------------|-------------------------------------------------------|------------------------------|
+| `effnet_classifier.pt` | EfficientNetB0 | Classifies document as Smart ID or ID Book            | ~1,000 images, 2 classes     |
+| `smartid_yolo.pt`      | YOLO11s        | Segments metadata and photo regions on Smart ID cards | ~1,000 images, 3 box classes |
+| `idbook_yolo.pt`       | YOLO11s        | Segments metadata and photo regions on ID Books       | ~1,000 images, 3 box classes |
 
 The EfficientNetB0 classifier uses standard ImageNet normalisation and a two-class output head. Both YOLO models detect three label classes: document boundary (`0`), photo (`1`), and metadata strip (`2`).
 
@@ -76,7 +80,15 @@ The EfficientNetB0 classifier uses standard ImageNet normalisation and a two-cla
 
 ## Installation
 
-### 1. System dependency — Tesseract v5
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/kwantu/document_transcription
+```
+
+The `model_weights/` directory containing all three weight files is included. No separate download step is required.
+
+### 2. System dependency — Tesseract v5
 
 Tesseract is a system-level install and **must be version 5**. It is not installed via pip.
 
@@ -93,7 +105,7 @@ brew install tesseract
 
 **Windows:** Download the installer from the [UB Mannheim builds](https://github.com/UB-Mannheim/tesseract/wiki).
 
-### 2. Python dependencies
+### 3. Python dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -101,23 +113,14 @@ pip install -r requirements.txt
 
 Key dependencies include:
 
-| Package | Purpose |
-|---|---|
-| `torch` / `torchvision` | EfficientNetB0 document classifier |
-| `ultralytics` | YOLO11s region segmentation |
-| `opencv-python` | Image preprocessing |
-| `pytesseract` | Tesseract Python bindings |
-| `pyzbar` | Barcode decoding (ID Books) |
-| `pdf2image` | PDF rasterisation (via `convert_from_path`) |
-
-### 3. Clone the repository
-
-```bash
-git clone https://github.com/<your-org>/<your-repo>.git
-cd <your-repo>
-```
-
-The `models/` directory containing all three weight files is included. No separate download step is required.
+| Package                 | Purpose                                     |
+|-------------------------|---------------------------------------------|
+| `torch` / `torchvision` | EfficientNetB0 document classifier          |
+| `ultralytics`           | YOLO11s region segmentation                 |
+| `opencv-python`         | Image preprocessing                         |
+| `pytesseract`           | Tesseract Python bindings                   |
+| `pyzbar`                | Barcode decoding (ID Books)                 |
+| `pymupdf`               | PDF rasterisation (via `convert_from_path`) |
 
 ---
 
@@ -126,9 +129,9 @@ The `models/` directory containing all three weight files is included. No separa
 ### Basic usage
 
 ```python
-from pipeline import full_pipeline
+from app.core.pipeline import full_pipeline
 
-result = full_pipeline(
+result, is_valid = full_pipeline(
     input_path="document.png",
     dest_path="output/",     # output directory (created if it doesn't exist)
     save_process=False       # set True to save debug images and raw OCR
@@ -140,7 +143,7 @@ result = full_pipeline(
 Setting `save_process=True` writes intermediate visualisations to disk, which is useful during development or for auditing extraction results:
 
 ```python
-result = full_pipeline(
+result, is_valid = full_pipeline(
     input_path="document.pdf",
     dest_path="output/",
     save_process=True
@@ -152,20 +155,21 @@ result = full_pipeline(
 `full_pipeline()` uses `img_2_json_v2()` internally. You can also call it directly if you need finer control over parameters:
 
 ```python
-from pipeline import load_input, load_params, SMARTID, IDBOOK, img_2_json_v2
+from app.core.pipeline import load_input, load_params, SMARTID, IDBOOK, img_2_json_v2
 
 for img_id, img in load_input("document.jpg"):
-    geom_params, prep_params, post_params = load_params(img)
-    yolo_model = SMARTID if geom_params.id_class == 0 else IDBOOK
+    params = load_params(img)
+    yolo_model = SMARTID if params.geometry_config.id_class == 0 else IDBOOK
 
     result = img_2_json_v2(
         yolo_model=yolo_model,
         img=img,
         img_id=img_id,
         dest_path="output/",
-        geom_params=geom_params,
-        prep_params=prep_params,
-        post_params=post_params,
+        effnet_dict=params.doc_class_info,
+        geom_params=params.geometry_config,
+        prep_params=params.preprocess_config,
+        post_params=params.postprocess_config,
         save_process=True
     )
 ```
@@ -197,19 +201,7 @@ output/<img_id>/
 └── photo.png
 ```
 
-**With debug output (`save_process=True`, v1):**
-```
-output/<img_id>/
-├── output.json
-├── photo.png
-├── input.png
-├── reoriented.png
-├── rotated.png
-├── preprocessing.png
-└── raw_ocr.txt
-```
-
-**With debug output (`save_process=True`, v2):**
+**With debug output (`save_process=True`):**
 ```
 output/<img_id>/
 ├── output.json
@@ -231,13 +223,16 @@ output/<img_id>/
 app/core/
 ├── pipeline.py           # Main entry point and pipeline orchestration
 ├── utils.py              # Image processing, OCR cleaning, and field formatting utilities
+├── dataset.py
+├── training.py
 ├── model_weights/
 │   ├── doc_classifier_ENetB0.pt
 │   ├── smartid_YOLO.pt
 │   └── idbook_YOLO.pt
 └── documentation/
+    ├── creating_datasets.md
     ├── technical_docs.md
-    └── project_summary.md
+    └── training_models.md
 ```
 
 ---
@@ -255,11 +250,11 @@ app/core/
 ## Known Limitations
 
 - **PDF processing is limited to the first page.** This is a deliberate design assumption — identity documents 
-are single-page by nature. Multi-page PDFs will have only the first page processed.
+are single-page by nature. Multipage PDFs will have only the first page processed.
 - **Barcode decoding for ID Books** is partially implemented. When a barcode is successfully decoded and passes ID 
-number validation, it takes priority over OCR extraction. Full barcode integration is still in development.
+number validation, it takes priority over OCR extraction. Fully decoding barcode data is yet to be deployed.
 - **`full_pipeline()` now uses `img_2_json_v2()`** — the confidence-based preprocessor is the active default. The 
-original `img_2_json()` (v1) remains in the source as a reference but is no longer called.
+original `_legacy_img_2_json()` (v1) remains in the source as a reference but is no longer called.
 - All models were trained on approximately 1,000 images per class. Performance on heavily damaged, poorly lit, 
 or non-standard documents may be reduced.
 
@@ -280,5 +275,5 @@ and distribute any derivative works under the same licence.
 ## Technical Documentation
 
 For full function-level reference — including all configurable parameters, algorithm descriptions, and 
-tuning guidance — see [`technical_docs.md`](./DOCUMENTATION.md).
+tuning guidance — see [`technical_docs.md`](app/core/documentation/technical_docs.md).
 

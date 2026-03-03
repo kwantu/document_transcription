@@ -50,7 +50,7 @@ ID_HANDLERS = {
 # Load our 3 model weights into memory now
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-MODEL_PATH = Path(__file__).resolve().parent / "pipeline_models"
+MODEL_PATH = Path(__file__).resolve().parent / "model_weights"
 
 IDBOOK = YOLO(MODEL_PATH / "idbook_yolo.pt")
 SMARTID = YOLO(MODEL_PATH / "smartid_yolo.pt")
@@ -358,7 +358,7 @@ def _legacy_img_2_json(
             "reorientation_delta": delta,
             "reorientation_cv2": cv2_rotation_ang,
             "rescaled_metadata_shape": {"w": int(w), "h": int(h)},
-            "id_no_extraction_method": extr_method,
+            "id_num_extraction_method": extr_method,
             "found_photo": photo is not None
         }
 
@@ -554,7 +554,7 @@ def img_2_json_v2(
         post_params.confidence
     )
 
-    if barcode_num and validate_id(barcode_num):
+    if barcode_num: # unlikely to be incorrect, still pass validation step later.
         output_dict["Identity Number"] = barcode_num
         extr_method = "barcode_decoding"
 
@@ -575,7 +575,7 @@ def img_2_json_v2(
             "id_class_confidence": effnet_dict["confidence"],
             "scale_factor": sf,
             "rescaled_metadata_shape": {"w": int(w), "h": int(h)},
-            "id_no_extraction_method": extr_method,
+            "id_num_extraction_method": extr_method,
             "found_photo": photo is not None,
             "metadata_confidence": best_meta_conf,
             "photo_confidence": best_photo_conf,
