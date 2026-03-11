@@ -2,7 +2,6 @@ from app.core.utils import * # imports key packages, too (cv2, YOLO, ...)
 from dataclasses import dataclass, field, asdict
 import json
 import torch
-import string
 from torchvision import models, transforms
 import torch.nn as nn
 import pytesseract
@@ -63,24 +62,8 @@ DOC_DETECTION.classifier[1] = nn.Linear(
     DOC_DETECTION.classifier[1].in_features, 2
 )
 
-checkpoint = torch.load(
-    MODEL_PATH / "effnet_classifier.pt",
-    map_location=DEVICE
-)
-
-# Case 1: checkpoint already contains state_dict
-if isinstance(checkpoint, dict) and "model_state" in checkpoint:
-    DOC_DETECTION.load_state_dict(checkpoint["model_state"])
-
-# Case 2: checkpoint is a full model object
-elif hasattr(checkpoint, "state_dict"):
-    DOC_DETECTION.load_state_dict(checkpoint.state_dict())
-
-# Case 3: checkpoint is directly a state_dict
-else:
-    DOC_DETECTION.load_state_dict(checkpoint)
-
-
+checkpoint = torch.load(MODEL_PATH / "effnet_classifier.pt", map_location=DEVICE, weights_only=False)
+DOC_DETECTION.load_state_dict(checkpoint["model_state"])
 
 DOC_DETECTION.to(DEVICE)
 DOC_DETECTION.eval()
