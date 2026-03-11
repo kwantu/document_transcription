@@ -18,6 +18,7 @@ RUN pip install --upgrade pip && \
 
 COPY app app
 COPY scripts scripts
+COPY samples samples
 COPY yolo11s.pt /api/yolo11s.pt
 
 ENV PYTHONPATH=/api
