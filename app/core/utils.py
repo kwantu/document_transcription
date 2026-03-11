@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pyzbar.pyzbar import decode
 from datetime import datetime
+from pdf2image import convert_from_path
 
 
 # --- IMAGE VIEW FUNCTION ---
@@ -46,6 +47,12 @@ def display(
     if show:
         plt.show()
     return fig
+
+# --- PDF -> cv2.Image ---
+def pdf2img(pdf_path: str | Path, dpi: int = 200) -> np.ndarray:
+    page = convert_from_path(pdf_path, dpi=dpi)[0] # take first page
+    img = np.array(page)
+    return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
 
 # --- PRODUCTION READY REORIENTATION ---
@@ -393,6 +400,22 @@ def extract_int_from_string(s: str) -> str | None:
     digits = [c for c in s if c.isdigit()]
     return "".join(digits) if digits else None
 
+def try_extract_id(s: str) -> str | None:
+    """Extract, normalise, and validate a 13-digit ID from a string."""
+    if s is None:
+        return None
+
+    id_num = extract_int_from_string(s)
+    if id_num is None:
+        return None
+    elif len(id_num) == 13:
+        return id_num
+    elif len(id_num) == 14: # I -> 1
+        return id_num[1:]
+    elif len(id_num) > 14: # I -> 1 AND noise
+        return id_num[1:14]
+    return None
+
 def numeric_line(lines: list[str]) -> tuple[int, str]:
     """
     Finding the index and line of the most numeric line given a list[str] of lines.
@@ -512,43 +535,30 @@ def format_fields_idbook(
     lines = text.splitlines()
     field_list: list[str] = ["VAN/SURNAME", "VOORNAME/FORENAMES"]
     fields: dict[str, str | None] = {k: None for k in field_list + ["Identity Number"]}
-    method: str = "error:no_method_given"
+    method: str = "unsuccessful"
 
-    # Step 1: Barcode
-    # INSERT CODE
-
-    # Step 2: Search explicitly for the letters 'IDNo' in a line?
-    # Think later if step 3 is unreliable...
-
-    # Step 3: First Line
-    id_num = extract_int_from_string(lines[0])
-
-    if id_num is None:
-        fields["Identity Number"] = None
-        method = "first_row:null"
-    elif len(id_num) == 13: # Assume we have a correct ID num
+    # Step 1: First Line
+    id_num: str = try_extract_id(lines[0])
+    if id_num:
         fields["Identity Number"] = id_num
-        method = "first_row:len=13"
-    elif len(id_num) == 14: # Assume I -> 1
-        fields["Identity Number"] = id_num[1:]
-        method = "first_row:len=14"
-    elif len(id_num) > 14: # Assume I -> 1 AND noise
-        fields["Identity Number"] = id_num[1:14]
-        method = "first_row:len>14"
-    else:
-        fields["Identity Number"] = None
-        method = "unsuccessful:first_row" # 'first row' approach failed.
+        method = "first_row"
 
-    # Step 4: Search for the most numeric line, if we were unsuccessful
-    if method == "unsuccessful:first_row":
-        id_num = numeric_line(lines)[1]
+    # Step 2: Search for "I.D. No." line EXPLICITLY
+    if fields["Identity Number"] is None:
+        idx, score = search_for_line(text, "I.D. No.", confidence=confidence)
+        if idx is not None and idx + 1 <= len(lines):
+            id_num = extract_int_from_string(lines[idx])
+            if id_num:
+                fields["Identity Number"] = id_num
+                method = "string_match_search"
 
-        if len(id_num) >= 13:
-            fields["Identity Number"] = id_num[:13]
+    # Step 3: Search for the most numeric line, if we were unsuccessful
+    if fields["Identity Number"] is None:
+        _, candidate = numeric_line(lines)
+        id_num = try_extract_id(candidate)
+        if id_num:
+            fields["Identity Number"] = id_num
             method = "numeric_scoring"
-        else:
-            fields["Identity Number"] = None
-            method = "unsuccessful:numeric_scoring"
 
     # Field Search for other fields --- less essential for now.
     for f in field_list:
@@ -587,7 +597,6 @@ def ocr_to_dict_smartid(
     """
     clean = clean_raw_ocr_output(text, allowed_chars, filler_char)
     return format_fields_smartid(clean, confidence) # fields(dict), method(str)
-
 
 def ocr_to_dict_idbook(
         text: str,
