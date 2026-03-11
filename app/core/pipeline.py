@@ -56,8 +56,8 @@ IDBOOK = YOLO(MODEL_PATH / "idbook_yolo.pt")
 SMARTID = YOLO(MODEL_PATH / "smartid_yolo.pt")
 IDBOOK.to(DEVICE)
 SMARTID.to(DEVICE)
-
-DOC_DETECTION = models.efficientnet_b0(weights="IMAGENET1K_V1")
+    
+DOC_DETECTION = models.efficientnet_b0(weights=None)
 DOC_DETECTION.classifier[1] = nn.Linear(
     DOC_DETECTION.classifier[1].in_features, 2
 )
