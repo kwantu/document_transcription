@@ -1,4 +1,5 @@
 from pathlib import Path
+import dataclasses
 from dataclasses import dataclass
 from collections import Counter
 import torch
@@ -64,7 +65,7 @@ def build_dataloaders(dataset_path: Path, cfg: DocClassifierConfig):
     train_tfms, eval_tfms = build_transforms(cfg.image_size)
 
     train_ds = datasets.ImageFolder(str(dataset_path / "train"), transform=train_tfms)
-    val_ds = datasets.ImageFolder(str(dataset_path / "val"),   transform=eval_tfms)
+    val_ds   = datasets.ImageFolder(str(dataset_path / "val"),   transform=eval_tfms)
 
     train_loader = DataLoader(
         train_ds,
@@ -170,7 +171,7 @@ def _run_training(
         {
             "model_state": model.state_dict(),
             "classes": train_ds.classes,
-            "config": cfg,
+            "config": dataclasses.asdict(cfg),
         },
         model_path,
     )
@@ -293,7 +294,8 @@ def train_yolo(
         epochs=cfg.num_epochs,
         imgsz=cfg.image_size,
         batch=cfg.batch_size,
-        workers=cfg.num_workers
+        workers=cfg.num_workers,
+        project=str(dest_path) # reduced redundancy
     )
 
 

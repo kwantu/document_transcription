@@ -6,6 +6,7 @@ from torchvision import models, transforms
 import torch.nn as nn
 import pytesseract
 from typing import Any
+# from training import DocClassifierConfig
 
 
 @dataclass
