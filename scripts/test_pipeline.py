@@ -1,29 +1,41 @@
 from ultralytics import YOLO
+import cv2
+from pathlib import Path
 
 # IMPORTANT: absolute imports
 from app.core.pipeline import (
-    img_2_json,
-    GeometryConfig,
-    PreprocessConfig,
-    PostprocessConfig,
+    img_2_json_v2,
+    load_params,
+    SMARTID,
+    IDBOOK
 )
 
 if __name__ == "__main__":
-    yolo_model = YOLO("yolo11s.pt")
 
-    geom = GeometryConfig(id_class=0, metadata_target_height=420, correction_angle=10.0)
-    prep = PreprocessConfig(k_denoise=3, thresh_block=13, thresh_c=3)
-    post = PostprocessConfig(confidence=0.5)
+    image_path = "samples/s2.jpg"
 
-    result = img_2_json(
-        yolo_model,
-        "samples/s2.jpeg",
+    # Load image
+    img = cv2.imread(image_path)
+    img_id = Path(image_path).stem
+
+    # Run document classifier → get pipeline parameters
+    params = load_params(img)
+
+    # Select YOLO model based on detected class
+    yolo_model = SMARTID if params.geometry_config.id_class == 0 else IDBOOK
+
+    # Run pipeline
+    result = img_2_json_v2(
+        yolo_model=yolo_model,
+        img=img,
+        img_id=img_id,
         dest_path="output",
-        geom_params=geom,
-        prep_params=prep,
-        post_params=post
+        effnet_dict=params.doc_class_info,
+        geom_params=params.geometry_config,
+        prep_params=params.preprocess_config,
+        post_params=params.postprocess_config,
+        save_process=True
     )
-    print("RESULT for Image:")
-    print(result)
 
-    
+    print("\nRESULT for Image:")
+    print(result)
