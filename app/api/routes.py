@@ -67,6 +67,7 @@ async def ocr_image(
     )
 
     return {
+        "version":"1.2.0",
         "status": "success",
         "data": result,
     }
