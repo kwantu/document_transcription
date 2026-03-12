@@ -63,8 +63,8 @@ def build_transforms(image_size: int):
 def build_dataloaders(dataset_path: Path, cfg: DocClassifierConfig):
     train_tfms, eval_tfms = build_transforms(cfg.image_size)
 
-    train_ds = datasets.ImageFolder(dataset_path / "train", transform=train_tfms)
-    val_ds   = datasets.ImageFolder(dataset_path / "val",   transform=eval_tfms)
+    train_ds = datasets.ImageFolder(str(dataset_path / "train"), transform=train_tfms)
+    val_ds = datasets.ImageFolder(str(dataset_path / "val"),   transform=eval_tfms)
 
     train_loader = DataLoader(
         train_ds,
