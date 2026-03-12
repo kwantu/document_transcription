@@ -1,29 +1,32 @@
-from ultralytics import YOLO
+from pathlib import Path
+import cv2
+
 from app.core.pipeline import (
-    img_2_json,
-    GeometryConfig,
-    PreprocessConfig,
-    PostprocessConfig
+    img_2_json_v2,
+    load_params,
+    SMARTID,
+    IDBOOK
 )
 
-# Load once on startup
-yolo_model = YOLO("yolo11s.pt")
+def process_image(image_path):
 
-def process_image(
-    image_path: str,
-    geom: dict | None = None,
-    prep: dict | None = None,
-    post: dict | None = None
-):
-    geom_cfg = GeometryConfig(**geom) if geom else GeometryConfig()
-    prep_cfg = PreprocessConfig(**prep) if prep else PreprocessConfig()
-    post_cfg = PostprocessConfig(**post) if post else PostprocessConfig()
+    img = cv2.imread(image_path)
+    img_id = Path(image_path).stem
 
-    return img_2_json(
+    params = load_params(img)
+
+    yolo_model = SMARTID if params.geometry_config.id_class == 0 else IDBOOK
+
+    result = img_2_json_v2(
         yolo_model=yolo_model,
-        img_path=image_path,
-        geom_params=geom_cfg,
-        prep_params=prep_cfg,
-        post_params=post_cfg,
+        img=img,
+        img_id=img_id,
+        dest_path="output",
+        effnet_dict=params.doc_class_info,
+        geom_params=params.geometry_config,
+        prep_params=params.preprocess_config,
+        post_params=params.postprocess_config,
         save_process=False
     )
+
+    return result

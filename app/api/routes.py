@@ -63,10 +63,7 @@ async def ocr_image(
     )
 
     result = process_image(
-        image_path=image_path,
-        geom=geom_cfg.__dict__,
-        prep=prep_cfg.__dict__,
-        post=post_cfg.__dict__,
+        image_path=image_path
     )
 
     return {
