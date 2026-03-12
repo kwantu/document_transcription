@@ -4,7 +4,7 @@ from app.middleware.auth import AuthMiddleware
 
 app = FastAPI(
     title="ID Processing API",
-    version="1.1.0"
+    version="1.2.0"
 )
 
 # 🔐 Runtime enforcement (NOT Swagger)
